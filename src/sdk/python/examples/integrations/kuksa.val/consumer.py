@@ -43,13 +43,12 @@ class MyTalent(Talent):
         ])
     
     async def on_event(self, ev, evtctx):
-        #print(ev)
         value = { "whenMs": ev["whenMs"], "value": TalentInput.get_raw_value(ev)}
-        print(f'Raw value {value}')
+        print('Received Raw value for {} is {}'.format(ev["feature"], value))
         if self.prev != None:
             try:
                 self.logger.info(f'Calling function for {ev["value"]}...', extra=self.logger.create_extra(evtctx))
-                result = await self.call('math', 'gradient', [self.prev, value], ev['subject'],  ev["returnTopic"], 60000)
+                result = await self.call('math', 'gradient', [self.prev, value], ev['subject'],  ev["returnTopic"], 6000)
                 #result = await self.call('math', 'fibonacci', [ev['value']], ev['subject'], ev['returnTopic'], 60000)
                 #result = await self.call('math', 'sum', value, ev['subject'], ev['returnTopic'], 60000)
                 # result = await self.call(self.id, 'multiply', [ev['value'], ev['value']], ev['subject'], ev['returnTopic'], 60000)

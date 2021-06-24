@@ -62,7 +62,7 @@ class VssWorker extends Talent {
     async onEvent(ev) {
         const rawValue = TalentInput.getRawValue(ev, 1, false, ev.feature, ev.type, ev.instance, true);
 
-        this.logger.info(`!!!Talent received value ${JSON.stringify(rawValue)} from Kuksa.VAL adapter`);
+        this.logger.info(`!!!Talent received value ${JSON.stringify(rawValue)} for ${JSON.stringify(ev.feature)} from Kuksa.VAL adapter`);
 
         const to = new TalentOutput();
 
