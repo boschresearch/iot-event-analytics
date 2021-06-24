@@ -30,22 +30,36 @@ class MyTalent(Talent):
         self.prev = None
         self.prevVal = None
 
+    def callees(self):
+        return [
+            f'math.fibonacci',
+            f'math.sum',
+            f'math.multiply',
+            f'math.gradient'
+        ]
     def get_rules(self):
         return OrRules([
-            Rule(ChangeConstraint('Speed', 'Vehicle', Constraint.VALUE_TYPE['RAW'])),
             Rule(ChangeConstraint('Acceleration$Lateral', 'Vehicle', Constraint.VALUE_TYPE['RAW']))
         ])
-
+    
     async def on_event(self, ev, evtctx):
         #print(ev)
-        #print(f'Raw value {TalentInput.get_raw_value(ev)}')
+        value = { "whenMs": ev["whenMs"], "value": TalentInput.get_raw_value(ev)}
+        print(f'Raw value {value}')
         if self.prev != None:
-            deltaVal = self.prevVal - TalentInput.get_raw_value(ev)
-            deltaT = self.prev - ev["whenMs"]
-            delta = deltaVal/deltaT
-            print(delta*1000, TalentInput.get_raw_value(ev), deltaT/-1000)
-        self.prev = ev["whenMs"]
-        self.prevVal = TalentInput.get_raw_value(ev)
+            try:
+                self.logger.info(f'Calling function for {ev["value"]}...', extra=self.logger.create_extra(evtctx))
+                result = await self.call('math', 'gradient', [self.prev, value], ev['subject'],  ev["returnTopic"], 60000)
+                #result = await self.call('math', 'fibonacci', [ev['value']], ev['subject'], ev['returnTopic'], 60000)
+                #result = await self.call('math', 'sum', value, ev['subject'], ev['returnTopic'], 60000)
+                # result = await self.call(self.id, 'multiply', [ev['value'], ev['value']], ev['subject'], ev['returnTopic'], 60000)
+
+                self.logger.info('Result is {}'.format(result), extra=self.logger.create_extra(evtctx))
+            except Exception as err:
+                self.logger.error('An error occurred while calling a function', extra=self.logger.create_extra(evtctx))
+                self.logger.error(err)
+
+        self.prev = value
 
 async def main():
     my_talent = MyTalent('mqtt://localhost:1883')
