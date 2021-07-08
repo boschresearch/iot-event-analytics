@@ -10,5 +10,6 @@ reports/
 .nyc_output/
 docs/jsdoc/*
 *.swp
+*.swo
 venv/*
 .venv
