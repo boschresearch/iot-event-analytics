@@ -9,18 +9,19 @@
  ****************************************************************************/
 
 #include <csignal>
+#include <fstream>
+#include <iostream>
+#include <iterator>
 #include <memory>
 #include <string>
 
 #include "nlohmann/json.hpp"
 #include "client.hpp"
-#include "logging.hpp"
-#include "mqtt_client.hpp"
+#include "protocol_gateway.hpp"
 
 using namespace iotea::core;
 using json = nlohmann::json;
 
-static const std::string SERVER_ADDRESS("tcp://localhost:1883");
 static const std::string TALENT_NAME = "echo_provider";
 static const std::string FUNC_ECHO = "echo";
 static const std::string FUNC_GET_COUNT = "getEchoCount";
@@ -54,14 +55,14 @@ public:
     schema::rule_ptr OnGetRules() const override { return nullptr; }
 
     void Echo(const json& args, call_ctx_ptr context) {
-        log::Info() << "Raw args: " << args.dump(4);
+        GetLogger().Info() << "Raw args: " << args.dump(4);
         auto message = args[0].get<std::string>();
-        log::Info() << "Received echo call: " << message;
+        GetLogger().Info() << "Received echo call: " << message;
         ++echoCount_;
 
         std::transform(message.begin(), message.end(), message.begin(), ::toupper);
         context->Reply(message);
-        log::Info() << "Replying echo:      " << message;
+        GetLogger().Info() << "Replying echo: " << message;
 
         auto notifyContext = NewEventContext(NOTIFICATION_CONTEXT);
         notifyContext->Emit(TALENT_NAME+"."+EVENT_ECHO_COUNT, echoCount_);
@@ -69,14 +70,14 @@ public:
     }
 
     void GetEchoCount(call_ctx_ptr context) {
-        log::Info() << "Received GetEchoCount call";
+        GetLogger().Info() << "Received GetEchoCount call";
         context->Reply(echoCount_);
-        log::Info() << "Replying echoCount: " << echoCount_;
+        GetLogger().Info() << "Replying echoCount: " << echoCount_;
     }
 
     void SetEchoCount(const json& args, call_ctx_ptr context) {
         auto newEchoCount = args[0].get<unsigned int>();
-        log::Info() << "Received setEchoCount call: " << newEchoCount;
+        GetLogger().Info() << "Received setEchoCount call: " << newEchoCount;
         if (newEchoCount != echoCount_) {
             echoCount_ = newEchoCount;
             auto notifyContext = NewEventContext(NOTIFICATION_CONTEXT);
@@ -86,19 +87,26 @@ public:
     }
 };
 
-static Client client = Client{SERVER_ADDRESS};
+std::shared_ptr<Client> client;
 
 void signal_handler(int) {
-    client.Stop();
+    if (client) {
+        client->Stop();
+    }
 }
 
-int main(int, char**) {
-    auto talent = std::make_shared<EchoProvider>();
-    client.RegisterFunctionTalent(talent);
+int main(int, char** argv) {
+    std::ifstream file{argv[1]};
+    std::string config{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+
+    auto gateway = std::make_shared<ProtocolGateway>(json::parse(config));
+    client = std::make_shared<Client>(gateway);
+
+    client->RegisterFunctionTalent(std::make_shared<EchoProvider>());
 
     std::signal(SIGINT, signal_handler);
 
-    client.Start();
+    client->Start();
 
     return 0;
 }

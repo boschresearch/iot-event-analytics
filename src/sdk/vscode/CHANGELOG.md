@@ -12,6 +12,20 @@
 
 ## [Unreleased]
 
+- 0.9.8 [2021-06-30]
+  - Stop MQTT Publisher spawning Node.js processes indefinitly
+
+- 0.9.7 [2021-06-17]
+  - Fix breaking change in vss-tools API for creating a vss file
+
+- 0.9.6 [2021-06-17]
+  - Fix version parsing of unknown docker-compose builds
+  - Add troubleshooting entry for making hidden files visible in the file open dialog for macOS
+  - Add button captions of file dialogs to compensate for hidden dialog titel on macOS
+
+- 0.9.5 [2021-06-07]
+  - Update certificate path within Kuksa.VAL repository
+
 - 0.9.3 [2021-03-09]
   - Add troubleshooting section in README.md
   - Fix version parsing for docker-compose
@@ -46,7 +60,7 @@
 
 - 0.7.0 [2021-02-12]
   - Add commands to facilitate the integration of Vehicle Signal Specification (VSS) into IoT Event Analytics
-    - Create complete Kuksa.VAL configuration
+    - Create complete Kuksa.val configuration
     - Convert VSS configuration to IoT Event Analytics types configuration
 
 - 0.6.1 [2021-02-10]

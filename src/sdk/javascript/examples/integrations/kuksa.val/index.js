@@ -11,8 +11,6 @@
 const Logger = require('../../../../../core/util/logger');
 process.env.LOG_LEVEL = Logger.ENV_LOG_LEVEL.DEBUG;
 
-process.env.MQTT_TOPIC_NS = 'iotea/';
-
 const Talent = require('../../../../../core/talent');
 
 const JsonModel = require('../../../../../core/util/jsonModel');
@@ -34,11 +32,11 @@ const {
 } = require('../../../../../core/util/talentIO');
 
 const {
-    VssInputValue,
-    VssOutputValue
-} = require('../../../../../adapter/vss/vss.talentIO');
+    KuksaValInputValue,
+    KuksaValOutputValue
+} = require('../../../../../adapter/kuksa.val/kuksa.val.talentIO');
 
-const VssWebsocket = require('../../../../../adapter/vss/vss.websocket');
+const KuksaValWebsocket = require('../../../../../adapter/kuksa.val/kuksa.val.websocket');
 
 const ProtocolGateway = require('../../../../../core/protocolGateway');
 const {
@@ -66,8 +64,9 @@ class VssWorker extends Talent {
 
         const to = new TalentOutput();
 
-        to.addFor(ev.subject, ev.type, ev.instance, 'Vehicle.Acceleration.Lateral', VssOutputValue.create(this, VssInputValue.getSubscription(rawValue), rawValue.value));
+        to.addFor(ev.subject, ev.type, ev.instance, 'Acceleration$Lateral', KuksaValOutputValue.create(this, KuksaValInputValue.getSubscription(rawValue), rawValue.value));
       //to.addFor(ev.subject, ev.type, ev.instance, 'Vehicle.Speed', VssOutputValue.create(this, VssInputValue.getSubscription(rawValue), rawValue.value));
+
 
         return to.toJson();
     }
@@ -75,18 +74,21 @@ class VssWorker extends Talent {
 
 const config = new JsonModel(require('./config.json'));
 
-const vssws = new VssWebsocket(config.get('vss.ws'), config.get('vss.jwt'));
+const kuksaValWs = new KuksaValWebsocket(config.get("'kuksa.val'.ws"), config.get("'kuksa.val'.jwt"));
 
 let accLon = 0;
 
 async function publishAccLonToVssIndefinitly() {
+
     demoLogger.info(`Publishing ${accLon} to Vehicle.Acceleration.Vertical...`);
 
     await vssws.publish('Vehicle.Acceleration.Vertical', accLon++);
+
+    demoLogger.info(`Publishing ${accLon} to Vehicle.Acceleration.Lateral...`);
     await vssws.publish('Vehicle.Acceleration.Lateral', accLon++);
 
     setTimeout(() => {
-        publishAccLonToVssIndefinitly();
+        publishAccLonToKuksaValIndefinitly();
     }, 2500);
 }
 
@@ -98,5 +100,5 @@ new VssWorker(talentGatewayConfig).start()
     //    demoLogger.info(`Received ${msg.value} from ${msg.path}`);
     //}))
     .then(() => {
-        publishAccLonToVssIndefinitly();
+        publishAccLonToKuksaValIndefinitly();
     });

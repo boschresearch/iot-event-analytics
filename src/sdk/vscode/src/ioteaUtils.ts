@@ -36,7 +36,6 @@ export class IoTeaUtils {
 
     private static START_IOTEA_PLATFORM_COMMAND = 'iotea.startIoTeaPlatform';
     private static STOP_IOTEA_PLATFORM_COMMAND = 'iotea.stopIoTeaPlatform';
-    private static CREATE_IOTEA_JS_TALENT_CLASS_COMMAND = 'iotea.createJSTalentClass';
     private static CREATE_IOTEA_JS_TALENT_PROJECT_COMMAND = 'iotea.createJsTalentProject';
     private static IOTEA_PLATFORM_TERMINAL_NAME = 'IoT Event Analytics Platform';
 
@@ -138,6 +137,7 @@ export class IoTeaUtils {
             canSelectMany: false,
             canSelectFolders: true,
             canSelectFiles: false,
+            openLabel: 'Select empty project folder',
             title: 'Choose an empty folder for your new IoT Event Analytics Talent project'
         })
         .then(async (uris: vscode.Uri[] | undefined) => {
@@ -350,16 +350,21 @@ export class IoTeaUtils {
 
     private async chooseComposeEnvFile(): Promise<string> {
         const selectedEnvFile: vscode.Uri[] | undefined = await vscode.window.showOpenDialog({
+            canSelectFolders: false,
             canSelectFiles: true,
             canSelectMany: false,
-            filters: {
-                'docker-compose environment file': ['env']
-            },
+            openLabel: 'Select *.env file',
+            // Filters for dot files for macOS do not work
             title: 'Select docker-compose .env file.'
         });
 
         if (selectedEnvFile === undefined) {
             return Promise.reject(new Error('No docker-compose environment file selected'));
+        }
+
+        if (!path.basename(selectedEnvFile[0].fsPath).endsWith('.env')) {
+            // Look if the give filename ends with .env
+            return Promise.reject(new Error('You need to select a valid *.env file'));
         }
 
         return selectedEnvFile[0].fsPath;

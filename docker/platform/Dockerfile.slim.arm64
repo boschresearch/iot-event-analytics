@@ -47,7 +47,7 @@ RUN npm config set maxsockets 5 -g
 RUN yarn --production --ignore-optional
 
 # Audit all packages for security vulnerabilities
-RUN yarn audit
+RUN yarn audit --groups dependencies --level critical
 
 # Shrink node_modules
 RUN curl -sf https://gobinaries.com/tj/node-prune | sh
@@ -78,8 +78,5 @@ COPY --from=minify-js /build/src-min ./
 # Copy the application resources
 COPY resources/ ./resources
 COPY package.json ./
-
-# Print modules over 1MB in size
-RUN du -sh ./node_modules/* | sort -nr | grep '\dM.*'
 
 CMD ["node", "/app/docker/platform/index.js"]

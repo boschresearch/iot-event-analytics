@@ -17,8 +17,81 @@ import os
 import queue
 import time
 from uuid import uuid4
-from hbmqtt.client import MQTTClient
-from hbmqtt.mqtt.constants import QOS_0
+from amqtt.client import MQTTClient
+from amqtt.mqtt.constants import QOS_0
+from .json_model import JsonModel
+from ..protocol_gateway import ProtocolGateway
+
+
+class MqttProtocolAdapter:
+
+    def __init__(self, config, display_name=None):
+        self.logger = logging.getLogger('MqttProtocolAdapter')
+        self.client = None
+        self.config = JsonModel(config)
+        self.broker_url = self.config.get('brokerUrl')
+        try:
+            self.topic_ns = self.config.get('topicNamespace')
+        except Exception:
+            self.topic_ns = None
+            self.logger.warning('Could not get topicNamespace from configuration. Will use None instead!')
+
+        if display_name is None:
+            self.client = MqttClient(self.broker_url, self.topic_ns)
+        else:
+            self.client = NamedMqttClient(display_name, self.broker_url, self.topic_ns)
+
+    async def publish(self, topic, message, publish_options=None):
+        if publish_options is None:
+            publish_options = ProtocolGateway.create_publish_options()
+        mqtt_options = {'retain': publish_options.retain}
+        await self.client.publish([self.__prefix_topic_ns(topic)], message, mqtt_options, publish_options.stash)
+
+    # subscribe_options are part of ProtocolAdapter interface even though not used in MqttClient
+    # pylint: disable=unused-argument
+    async def subscribe(self, topic, callback, subscribe_options=None):
+        await self.client.subscribe(self.__prefix_topic_ns(topic), self.__strip_namespace_wrapper(callback))
+
+    # subscribe_options are part of ProtocolAdapter interface even though not used in MqttClient
+    # pylint: disable=unused-argument
+    async def subscribe_shared(self, group, topic, callback, subscribe_options=None):
+        await self.client.subscribe(f'$share/{group}/{self.__prefix_topic_ns(topic)}',
+                                    self.__strip_namespace_wrapper(callback))
+
+    def getId(self):
+        return self.broker_url
+
+    @staticmethod
+    def create_default_configuration(is_platform_protocol=False, broker_url='mqtt://localhost:1883'):
+        config = {"platform": is_platform_protocol,
+                  "module": {"name": ".util.mqtt_client", "class": "MqttProtocolAdapter"},
+                  "config": {"brokerUrl": broker_url, "topicNamespace": "iotea/"}}
+        return config
+
+    def __prefix_topic_ns(self, topic):
+        return MqttClient.prefix_topic_ns(topic, self.topic_ns)
+
+    def __strip_topic_namespace(self, topic):
+        if self.topic_ns is None:
+            return topic
+        topic_ns_index = topic.find(self.topic_ns)
+        if topic_ns_index != 0:
+            return topic
+        return topic[len(self.topic_ns):]
+
+    def __strip_namespace_wrapper(self, callback):
+        if asyncio.iscoroutinefunction(callback):
+            async def callback_wrapper(msg, _topic):
+                await callback(msg, self.__strip_topic_namespace(_topic))
+
+            cb = callback_wrapper
+        else:
+            def callback_wrapper(msg, _topic):
+                callback(msg, self.__strip_topic_namespace(_topic))
+
+            cb = callback_wrapper
+        return cb
+
 
 from ..constants import ONE_SECOND_MS
 
@@ -28,13 +101,16 @@ MAX_RECONNECT_INTERVAL_S = 2
 DEFAULT_MQTT5_PROBE_TIMEOUT_MS = ONE_SECOND_MS
 MQTT_MESSAGE_ENCODING = 'utf-8'
 
+
 class CustomMqttClient(MQTTClient):
     def __init__(self, client_id=None, config=None, loop=None, on_reconnect=None):
-        super(CustomMqttClient, self).__init__(client_id, config, loop)
+        super().__init__(client_id, config, loop)
         self.on_reconnect = on_reconnect
+        self.disconnected = False
 
     async def reconnect(self, cleansession=True):
-        code = await super(CustomMqttClient, self).reconnect(cleansession)
+        self.disconnected = True
+        code = await super().reconnect(cleansession)
 
         if self.on_reconnect is not None:
             if asyncio.iscoroutinefunction(self.on_reconnect):
@@ -42,10 +118,12 @@ class CustomMqttClient(MQTTClient):
             else:
                 self.on_reconnect()
 
+        self.disconnected = False
         return code
 
+
 class MqttClient:
-    def __init__(self, connection_string, topic_ns=os.environ.get('MQTT_TOPIC_NS', None), check_mqtt5_compatibility=True, logger=None, client_id=None):
+    def __init__(self, broker_url, topic_ns=None, check_mqtt5_compatibility=True, logger=None, client_id=None):
         if client_id is None:
             client_id = MqttClient.create_client_id('MqttClient')
 
@@ -55,10 +133,11 @@ class MqttClient:
             self.logger = logging.getLogger(client_id)
 
         self.client = CustomMqttClient(client_id, on_reconnect=self.__on_reconnect)
-        self.connection_string = connection_string
+        self.broker_url = broker_url
         self.client.config['reconnect_retries'] = MAX_RECONNECT_RETRIES
         self.client.config['reconnect_max_interval'] = MAX_RECONNECT_INTERVAL_S
         self.client_initialized = False
+        self.init_semaphore = asyncio.Semaphore(1)
         self.subscriptions = []
         self.check_mqtt5_compatibility = check_mqtt5_compatibility
         self.is_mqtt5_compatible = False
@@ -71,44 +150,54 @@ class MqttClient:
             else:
                 raise Exception('Given topic namespace {} is invalid. It has to have a trailing slash'.format(topic_ns))
         else:
-            self.logger.warning('*****WARNING***** No topic namespace given. Tip: Also check all topics of your subscriptions and publications')
+            self.logger.warning(
+                '*****WARNING***** No topic namespace given. Tip: Also check all topics of your subscriptions and publications')
 
     async def get_client_async(self):
-        if self.client_initialized:
-            return self.client
+        await self.init_semaphore.acquire()
+        try:
+            if self.client_initialized:
+                return self.client
 
-        await self.__init(self.connection_string)
-        self.client_initialized = True
+            await self.__init(self.broker_url)
+            self.client_initialized = True
+        finally:
+            self.init_semaphore.release()
         return self.client
 
-    async def publish_json(self, topics, json_, options=None):
+    async def publish_json(self, topics, json_, options=None, stash=True):
         if options is None:
             options = {}
 
-        self.__validate_json(json_)
+        self.validate_json(json_)
 
-        await self.publish(topics, json.dumps(json_, separators=(',', ':')), options)
+        await self.publish(topics, json.dumps(json_, separators=(',', ':')), options, stash)
 
-    async def publish(self, topics, message, options=None):
+    async def publish(self, topics, message, options=None, stash=True):
+        # if not connected and stash is disabled - do not publish the message to avoid memory overloading
+        if not stash and (not self.client_initialized or self.client.disconnected):
+            return
+
         if options is None:
             options = {}
-
         client = await self.get_client_async()
 
         if isinstance(topics, list) is False:
             topics = [topics]
 
-        options = {**{'qos': QOS_0, 'retain': False}, **options}
+        options = {**{'qos': QOS_0, 'retain': options.get('retain', False)}, **options}
 
         for topic in topics:
             prefixed_topic = self.__prefix_topic_ns(topic)
             self.logger.debug('Sending {} to {}'.format(message, prefixed_topic))
-            await client.publish(prefixed_topic, message.encode(MQTT_MESSAGE_ENCODING), qos=options['qos'], retain=options['retain'])
+            await client.publish(prefixed_topic, message.encode(MQTT_MESSAGE_ENCODING), qos=options['qos'],
+                                 retain=options['retain'])
 
-    async def subscribe_json(self, topic, callback, qos=0):
-        await self.subscribe(topic, callback, qos, True)
+    async def subscribe_json(self, topic, callback):
+        await self.subscribe(topic, callback, True)
 
-    async def subscribe(self, topic, callback, qos=QOS_0, to_json=False):
+    async def subscribe(self, topic, callback, to_json=False):
+        qos = QOS_0
         client = await self.get_client_async()
 
         topic = self.__prefix_topic_ns(topic)
@@ -116,7 +205,6 @@ class MqttClient:
         subscription = Subscription(topic, callback, to_json, qos)
 
         self.subscriptions.append(subscription)
-
         await client.subscribe([(topic, qos)])
 
         self.logger.debug('Successfully subscribed to topic {}'.format(topic))
@@ -129,19 +217,22 @@ class MqttClient:
 
     async def unsubscribe(self, topics):
         client = await self.get_client_async()
-        await self.client.unsubscribe(topics)
+        if not isinstance(topics, list):
+            topics = [topics]
+        prefixed_topics = [self.__prefix_topic_ns(topic) for topic in topics]
+        await client.unsubscribe(prefixed_topics)
 
     @staticmethod
     def create_client_id(prefix):
         return '{}-{}'.format(prefix, str(uuid4())[:8])
 
-    async def __init(self, connection_string):
+    async def __init(self, broker_url):
         # Connecting
-        self.logger.info('Connecting...')
+        self.logger.info(f'Connecting to {broker_url} ...')
 
         while True:
             try:
-                await self.client.connect(connection_string, cleansession=True)
+                await self.client.connect(broker_url, cleansession=True)
                 break
             except:
                 await asyncio.sleep(1)
@@ -153,13 +244,18 @@ class MqttClient:
 
         # Check for mqtt5 here
         if self.check_mqtt5_compatibility and self.is_mqtt5_compatible is False:
-            await self.__mqtt5_probe(self.client, int(os.environ.get('MQTT5_PROBE_TIMEOUT', DEFAULT_MQTT5_PROBE_TIMEOUT_MS)))
+            await self.__mqtt5_probe(self.client,
+                                     int(os.environ.get('MQTT5_PROBE_TIMEOUT', DEFAULT_MQTT5_PROBE_TIMEOUT_MS)))
 
     def __prefix_topic_ns(self, topic):
-        if self.topic_ns is None:
+        return MqttClient.prefix_topic_ns(topic, self.topic_ns)
+
+    @staticmethod
+    def prefix_topic_ns(topic, topic_ns):
+        if topic_ns is None:
             return topic
 
-        return re.sub(r'^(\$share\/[^\/]+\/)?(?:{})?(.+)'.format(self.topic_ns), r'\1' + self.topic_ns + r'\2', topic)
+        return re.sub(fr'^(\$share\/[^\/]+\/)?(?:{topic_ns})?(.+)', fr'\1{topic_ns}\2', topic)
 
     async def __on_reconnect(self):
         for subscription in self.subscriptions:
@@ -183,21 +279,19 @@ class MqttClient:
         self.subscriptions.append(probe_subscription)
 
         self.logger.debug('Probe subscription is {}'.format(subscribe_to))
-
         await client.subscribe([
             (subscribe_to, QOS_0)
         ])
-
         self.logger.debug('Publishing probe to {}'.format(publish_to))
-
         await client.publish(publish_to, 'probe-{}'.format(probe_uuid).encode(MQTT_MESSAGE_ENCODING), qos=QOS_0)
-
         timeout_at_ms = time.time() * ONE_SECOND_MS + timeout_ms
 
         try:
             while probe_subscription.received_response is False:
                 if time.time() * ONE_SECOND_MS > timeout_at_ms:
-                    raise Exception('Probe on topic {} was not received on topic {}. An MQTT5 compilant broker is required'.format(publish_to, subscribe_to))
+                    raise Exception(
+                        'Probe on topic {} was not received on topic {}. An MQTT5 compilant broker is required'.format(
+                            publish_to, subscribe_to))
 
                 await asyncio.sleep(0.1)
         finally:
@@ -211,9 +305,7 @@ class MqttClient:
         while True:
             try:
                 msg = await self.client.deliver_message()
-
                 i = len(self.subscriptions) - 1
-
                 while i >= 0:
                     subscription = self.subscriptions[i]
                     i -= 1
@@ -221,23 +313,25 @@ class MqttClient:
                         await self.client.unsubscribe([subscription.topic])
                         self.subscriptions.remove(subscription)
                         continue
-
                     subscription.messages.put_nowait(msg)
             # pylint: disable=broad-except
             except Exception as err:
                 self.logger.warning(err)
                 await asyncio.sleep(1)
 
-    def __validate_json(self, json_=None):
+    @staticmethod
+    def validate_json(json_=None):
         if json_ is not None and (isinstance(json_, dict) or isinstance(json_, list)):
             return
-
         raise Exception('Given JSON document is neither a dictionary nor a list')
 
+
 class NamedMqttClient(MqttClient):
-    def __init__(self, name, connection_string, topic_ns=os.environ.get('MQTT_TOPIC_NS', None), check_mqtt5_compatibility=True):
+    def __init__(self, name, broker_url, topic_ns=os.environ.get('MQTT_TOPIC_NS', None),
+                 check_mqtt5_compatibility=True):
         client_id = MqttClient.create_client_id('{}.MqttClient'.format(name))
-        super(NamedMqttClient, self).__init__(connection_string, topic_ns, check_mqtt5_compatibility, logging.getLogger(client_id), client_id)
+        super().__init__(broker_url, topic_ns, check_mqtt5_compatibility, logging.getLogger(client_id), client_id)
+
 
 class Subscription:
     def __init__(self, topic, cb, to_json=False, qos=0):
@@ -247,14 +341,18 @@ class Subscription:
         # Without shared subscription group
         # Mask $ for platform events or $SYS topics
         self.topic_regex = re.compile(
-            '^{}$'.format(re.sub(r'^(\$share\/[^\/]+\/)', '', topic).replace('$', '\\$').replace('.', '\\.').replace('+', '[^\\/]+').replace('#', '.*'))
+            '^{}$'.format(
+                re.sub(r'^(\$share\/[^\/]+\/)', '', topic).replace('$', '\\$').replace('.', '\\.').replace('+',
+                                                                                                           '[^\\/]+').replace(
+                    '#', '.*'))
         )
 
         self.messages = queue.Queue(0)
         self.should_unsubscribe = False
 
         self.subscription_loop = asyncio.new_event_loop()
-        self.subscription_thread = threading.Thread(daemon=True, target=self.__start_subscription, args=(self.subscription_loop, cb, to_json,))
+        self.subscription_thread = threading.Thread(daemon=True, target=self.__start_subscription,
+                                                    args=(self.subscription_loop, cb, to_json,))
         self.subscription_thread.start()
 
     def unsubscribe(self):
@@ -272,19 +370,17 @@ class Subscription:
 
             if message is None:
                 continue
-
             if self.topic_regex.fullmatch(message.topic) is None:
                 continue
 
             decoded_message = message.publish_packet.payload.data.decode(MQTT_MESSAGE_ENCODING)
-
             if to_json:
                 try:
                     decoded_message = json.loads(decoded_message)
-                    self.__validate_json(decoded_message)
+                    MqttClient.validate_json(decoded_message)
                 # pylint: disable=broad-except
                 except Exception:
-                    # json.JSONDecodeError from json.loads or Exception from __validate_json
+                    # json.JSONDecodeError from json.loads or Exception from validate_json
                     # Skip that message, since it's not a valid JSON document
                     continue
 
@@ -293,15 +389,10 @@ class Subscription:
             else:
                 callback(decoded_message, message.topic)
 
-    def __validate_json(self, json_=None):
-        if json_ is not None and (isinstance(json_, dict) or isinstance(json_, list)):
-            return
-
-        raise Exception('Given JSON document is neither a dictionary nor a list')
 
 class ProbeSubscription(Subscription):
     def __init__(self, topic):
-        super(ProbeSubscription, self).__init__(topic, self.__on_probe_receive, False)
+        super().__init__(topic, self.__on_probe_receive, False)
         self.received_response = False
 
     # pylint: disable=unused-argument

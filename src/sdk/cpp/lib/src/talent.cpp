@@ -20,7 +20,8 @@ namespace core {
 //
 Talent::Talent(const std::string& talent_id)
     : schema_{schema::Talent{talent_id}}
-    , talent_id_{talent_id} {}
+    , talent_id_{talent_id}
+    , logger_{std::string{"Talent."} + talent_id} {}
 
 void Talent::Initialize(reply_handler_ptr reply_handler, context_generator_func_ptr context_gen, uuid_generator_func_ptr uuid_gen) {
     reply_handler_ = reply_handler;
@@ -79,7 +80,7 @@ schema::Schema Talent::GetSchema() const {
     auto trigger_rules = OnGetRules();
 
     if (!callee_rules && !trigger_rules) {
-        log::Error() << "At least one callee or trigger rule must be defined";
+        GetLogger().Error() << "At least one callee or trigger rule must be defined";
         // TODO better error handling required
         assert(0);
     }
@@ -108,19 +109,19 @@ schema::Schema Talent::GetSchema() const {
     return schema_.GetSchema(callee_rules);
 }
 
-void Talent::OnError(const ErrorMessage&) { }
+void Talent::OnError(error_message_ptr) { }
 
 schema::rule_ptr Talent::OnGetRules() const {
     return rules_;
 }
 
-void Talent::OnEvent(const Event& event, event_ctx_ptr context) {
+void Talent::OnEvent(event_ptr event, event_ctx_ptr context) {
     if (on_event_) {
         on_event_(event, context);
     }
 }
 
-void Talent::OnPlatformEvent(const PlatformEvent&) {}
+void Talent::OnPlatformEvent(platform_event_ptr) {}
 
 void Talent::SetExternalEventHandler(on_event_func_ptr on_event, schema::rule_ptr rules) {
     on_event_ = on_event;
@@ -149,6 +150,10 @@ std::string Talent::GetOutputName(const std::string& talent_id, const std::strin
 
 std::string Talent::GetOutputName(const std::string& type, const std::string& talent_id, const std::string& feature) const {
     return type + "." + GetOutputName(talent_id, feature);
+}
+
+NamedLogger Talent::GetLogger() const {
+    return logger_;
 }
 
 //

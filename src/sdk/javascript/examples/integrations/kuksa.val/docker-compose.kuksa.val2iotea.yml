@@ -1,0 +1,33 @@
+version: "3.6"
+services:
+  kuksa.val:
+    image: ${KUKSA_VAL_IMG}
+    environment:
+      - KUKSAVAL_OPTARGS=--insecure
+    ports:
+      - '8090:8090'
+    networks:
+      - iotea-platform-network
+    volumes:
+      - type: bind
+        source: ${KUKSA_VAL_CONFIG_DIR}
+        target: "/config"
+  kuksa.val2iotea:
+    build:
+      context: ..
+      dockerfile: docker/kuksa.val2iotea/Dockerfile.amd64
+      args:
+        - HTTP_PROXY=${DOCKER_HTTP_PROXY}
+        - HTTPS_PROXY=${DOCKER_HTTPS_PROXY}
+    networks:
+      - iotea-platform-network
+    depends_on:
+      - kuksa.val
+    volumes:
+      - type: bind
+        source: ${KUKSA_VAL2IOTEA_CONFIG_DIR}
+        target: "/app/docker/kuksa.val2iotea/config"
+networks:
+  iotea-platform-network:
+    name: iotea-platform-network
+    driver: bridge

@@ -15,7 +15,7 @@ with open('README.md', 'r') as fh:
 
 setup(
     name="boschio-iotea",
-    version="0.4.1",
+    version="0.5.0",
     author="Bosch.IO GmbH",
     description="Core library for Talent development",
     long_description=LONG_DESCRIPTION,
@@ -26,8 +26,7 @@ setup(
         "iotea.core.util"
     ],
     install_requires=[
-        "websockets==8.1",
-        "hbmqtt==0.9.6"
+        "amqtt>=0.10.0a3"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

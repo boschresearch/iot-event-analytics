@@ -9,18 +9,19 @@
  ****************************************************************************/
 
 #include <csignal>
+#include <fstream>
+#include <iostream>
+#include <iterator>
 #include <initializer_list>
 #include <memory>
 
 #include "nlohmann/json.hpp"
 #include "client.hpp"
-#include "logging.hpp"
-#include "mqtt_client.hpp"
+#include "protocol_gateway.hpp"
 
 using namespace iotea::core;
 using json = nlohmann::json;
 
-static const std::string SERVER_ADDRESS("tcp://localhost:1883");
 static const std::string TALENT_NAME("echo_consumer");
 static const std::string PROVIDED_FEATURE_NAME("messageString");
 static const std::string PROVIDED_FETAURE_TYPE(schema::DEFAULT_TYPE);
@@ -51,36 +52,44 @@ class EchoConsumer : public Talent {
         return IsSet(TALENT_NAME+"."+PROVIDED_FEATURE_NAME);
     }
 
-    void OnEvent(const Event& event, event_ctx_ptr context) override {
-        if (event.GetType() == PROVIDED_FETAURE_TYPE) {
-            auto message = event.GetValue().get<std::string>();
-            log::Info() << "Received message:  '" << message << "'";
+    void OnEvent(event_ptr event, event_ctx_ptr context) override {
+        if (event->GetType() == PROVIDED_FETAURE_TYPE) {
+            auto message = event->GetValue().get<std::string>();
+            GetLogger().Info() << "Received message:  '" << message << "'";
 
             auto t = context->Call(echo_provider.echo, message);
 
-            context->Gather([](std::vector<json> replies) {
-                    log::Info() << "Received echo:     '" << replies[0].dump(4) << "'";
+            context->Gather([this](std::vector<json> replies) {
+                    GetLogger().Info() << "Received echo:     '" << replies[0].dump(4) << "'";
                 }, nullptr, t);
 
-            log::Info() << "Forwarded message: '" << message << "'";
+            GetLogger().Info() << "Forwarded message: '" << message << "'";
         } else {
-            log::Warn() << "UNKNOWN EVENT RECEIVED";
+            GetLogger().Warn() << "UNKNOWN EVENT RECEIVED";
         }
     }
 };
 
-static Client client = Client{SERVER_ADDRESS};
+std::shared_ptr<Client> client;
 
 void signal_handler(int) {
-    client.Stop();
+    if (client) {
+        client->Stop();
+    }
 }
 
-int main(int, char**) {
+int main(int, char** argv) {
+    std::ifstream file{argv[1]};
+    std::string config{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+
+    auto gateway = std::make_shared<ProtocolGateway>(json::parse(config));
+    client = std::make_shared<Client>(gateway);
+
     auto talent = std::make_shared<EchoConsumer>();
-    client.RegisterTalent(talent);
+    client->RegisterTalent(talent);
 
     std::signal(SIGINT, signal_handler);
-    client.Start();
+    client->Start();
 
     return 0;
 }

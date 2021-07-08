@@ -97,9 +97,9 @@ export class VssUtils {
             fs.mkdirSync(absCertificatePath);
 
             // Copy certificates
-            fs.copyFileSync(path.resolve(absKuksaValRepositoryPath, 'certificates', 'Server.key'), path.resolve(absCertificatePath, 'Server.key'));
-            fs.copyFileSync(path.resolve(absKuksaValRepositoryPath, 'certificates', 'Server.pem'), path.resolve(absCertificatePath, 'Server.pem'));
-            fs.copyFileSync(path.resolve(absKuksaValRepositoryPath, 'certificates', 'jwt', 'jwt.key.pub'), path.resolve(absCertificatePath, 'jwt.key.pub'));
+            fs.copyFileSync(path.resolve(absKuksaValRepositoryPath, 'kuksa_certificates', 'Server.key'), path.resolve(absCertificatePath, 'Server.key'));
+            fs.copyFileSync(path.resolve(absKuksaValRepositoryPath, 'kuksa_certificates', 'Server.pem'), path.resolve(absCertificatePath, 'Server.pem'));
+            fs.copyFileSync(path.resolve(absKuksaValRepositoryPath, 'kuksa_certificates', 'jwt', 'jwt.key.pub'), path.resolve(absCertificatePath, 'jwt.key.pub'));
 
             // Create a new JWT token
             const absKuksaValJwtPath = await this.createKuksaValJwt(absKuksaValRepositoryPath, kuksaValToken);
@@ -146,6 +146,7 @@ export class VssUtils {
             canSelectFolders: true,
             canSelectFiles: false,
             canSelectMany: false,
+            openLabel: 'Select output directory',
             title: 'Select the output directory for the Kuksa.VAL configuration'
         })
             .then((kuksaConfigOutputFolders: vscode.Uri[] | undefined) => {
@@ -198,6 +199,7 @@ export class VssUtils {
                         canSelectFolders: false,
                         canSelectFiles: true,
                         canSelectMany: false,
+                        openLabel: 'Select types.json',
                         filters: {
                             'IoT Event Analytics types configuration': [ 'json' ]
                         },
@@ -216,6 +218,7 @@ export class VssUtils {
                     canSelectFolders: true,
                     canSelectFiles: false,
                     canSelectMany: false,
+                    openLabel: 'Select output directory for types.json',
                     title: 'Select the output directory for the IoT Event Analytics types configuration file',
                     defaultUri: absTypesJsonInputPath !== null ? vscode.Uri.file(path.dirname(absTypesJsonInputPath)) : undefined
                 })
@@ -289,6 +292,7 @@ export class VssUtils {
                             canSelectFolders: false,
                             canSelectFiles: true,
                             canSelectMany: false,
+                            openLabel: 'Select vss.json',
                             filters: {
                                 'Vehicle Signal Specification': [ 'json' ]
                             },
@@ -333,7 +337,7 @@ export class VssUtils {
 
         const t = new Terminal();
 
-        const absJwtPath = path.resolve(absKuksaValRepositoryPath, 'certificates', 'jwt');
+        const absJwtPath = path.resolve(absKuksaValRepositoryPath, 'kuksa_certificates', 'jwt');
 
         let jwtInputFile = 'super-admin.json';
 
@@ -381,7 +385,7 @@ export class VssUtils {
             this.reportProgress(message);
         });
 
-        await t.executeCommand(getPythonCmd(), [ 'vspec2json.py', '-i', `Vehicle:vehicle.uuid`, '../spec/VehicleSignalSpecification.vspec', 'vss.json' ], absVssToolsPath, (message: string) => {
+        await t.executeCommand(getPythonCmd(), [ 'vspec2json.py', '-I', `Vehicle:vehicle.uuid`, '../spec/VehicleSignalSpecification.vspec', 'vss.json' ], absVssToolsPath, (message: string) => {
             this.reportProgress(message);
         });
 

@@ -9,27 +9,27 @@
  ****************************************************************************/
 
 #include <csignal>
+#include <fstream>
+#include <iostream>
+#include <iterator>
 #include <memory>
 
 #include "nlohmann/json.hpp"
 #include "client.hpp"
-#include "logging.hpp"
-#include "mqtt_client.hpp"
+#include "protocol_gateway.hpp"
 
 
 using json = nlohmann::json;
+using iotea::core::ProtocolGateway;
 using iotea::core::FunctionTalent;
 using iotea::core::Client;
 using iotea::core::Callee;
-using iotea::core::Event;
-using iotea::core::IsSet;
-using iotea::core::event_ctx_ptr;
 using iotea::core::call_ctx_ptr;
+using iotea::core::event_ptr;
+using iotea::core::event_ctx_ptr;
+using iotea::core::IsSet;
 using iotea::core::schema::rule_ptr;
 
-namespace logging = iotea::core::log;
-
-constexpr char SERVER_ADDRESS[] = "tcp://localhost:1883";
 
 class MathFunctions : public FunctionTalent {
    private:
@@ -102,22 +102,22 @@ class MathFunctions : public FunctionTalent {
         }, nullptr, t1, t2);
     }
 
-    void OnEvent(const Event& event, event_ctx_ptr ctx) override {
-        auto v = event.GetValue();
+    void OnEvent(event_ptr event, event_ctx_ptr ctx) override {
+        auto v = event->GetValue();
 
         auto tsum = ctx->Call(sum, v);
-        ctx->Gather([v](const std::vector<json>& replies) {
-                logging::Info() << "sum(" << v << ") = " << replies[0].get<int>();
+        ctx->Gather([this, v](const std::vector<json>& replies) {
+                GetLogger().Info() << "sum(" << v << ") = " << replies[0].get<int>();
         }, nullptr, tsum);
 
         auto tfac = ctx->Call(fac, v);
-        ctx->Gather([v](const std::vector<json>& replies) {
-                logging::Info() << "fac(" << v << ") = " << replies[0].get<int>();
+        ctx->Gather([this, v](const std::vector<json>& replies) {
+                GetLogger().Info() << "fac(" << v << ") = " << replies[0].get<int>();
         }, nullptr, tfac);
 
         auto tfib = ctx->Call(fib, v);
-        ctx->Gather([v](const std::vector<json>& replies) {
-                logging::Info() << "fib(" << v << ") = " << replies[0].get<int>();
+        ctx->Gather([this, v](const std::vector<json>& replies) {
+                GetLogger().Info() << "fib(" << v << ") = " << replies[0].get<int>();
         }, nullptr, tfib);
     }
 
@@ -126,18 +126,25 @@ class MathFunctions : public FunctionTalent {
     }
 };
 
-static Client client = Client{SERVER_ADDRESS};
+std::shared_ptr<Client> client;
 
 void signal_handler(int) {
-    client.Stop();
+    if (client) {
+        client->Stop();
+    }
 }
 
-int main(int, char**) {
-    auto talent = std::make_shared<MathFunctions>();
-    client.RegisterFunctionTalent(talent);
+int main(int, char** argv) {
+    std::ifstream file{argv[1]};
+    std::string config{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+
+    auto gateway = std::make_shared<ProtocolGateway>(json::parse(config));
+    client = std::make_shared<Client>(gateway);
+
+    client->RegisterFunctionTalent(std::make_shared<MathFunctions>());
 
     std::signal(SIGINT, signal_handler);
-    client.Start();
+    client->Start();
 
     return 0;
 }

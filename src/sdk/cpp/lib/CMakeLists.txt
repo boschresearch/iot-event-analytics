@@ -34,6 +34,8 @@ endif()
 set (THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
+find_library(LIBDL dl)
+
 add_library(iotea_sdk_cpp
   SHARED
     src/call.cpp
@@ -42,10 +44,10 @@ add_library(iotea_sdk_cpp
     src/event.cpp
     src/jsonquery.cpp
     src/logging.cpp
-    src/mqtt_client.cpp
+    src/protocol_gateway.cpp
     src/schema.cpp
     src/talent.cpp
-    src/talent_test.cpp
+    src/testset_talent.cpp
     src/util.cpp
 )
 target_code_coverage(iotea_sdk_cpp)
@@ -64,27 +66,46 @@ if(IOTEA_SDK_STATIC_PAHO)
     PUBLIC
       paho-mqttpp3-static
       nlohmann_json::nlohmann_json
+      ${LIBDL}
   )
 else()
   target_link_libraries(iotea_sdk_cpp
     PUBLIC
       paho-mqttpp3
       nlohmann_json::nlohmann_json
+      ${LIBDL}
   )
 endif()
 
 target_compile_options(iotea_sdk_cpp PRIVATE -Wall -Wextra -pedantic -Werror)
 
-include(GoogleTest)
 if(BUILD_TESTING)
+
+    # Google Test
+    include(FetchContent)
+    FetchContent_Declare(
+      googletest
+      GIT_REPOSITORY https://github.com/google/googletest.git
+      GIT_TAG        release-1.10.0
+    )
+
+    FetchContent_Populate(googletest)
+    add_subdirectory(${googletest_SOURCE_DIR} ${googletest_BINARY_DIR})
+
+    # enable testing
+    include(CTest)
+    include(GoogleTest)
+
     add_executable(testrunner
         tests/test_call.cpp
         tests/test_client.cpp
         tests/test_context.cpp
         tests/test_event.cpp
         tests/test_jsonquery.cpp
+        tests/test_protocol_gateway.cpp
         tests/test_schema.cpp
         tests/test_talent.cpp
+        tests/test_testset_talent.cpp
         tests/test_util.cpp
     )
 
@@ -94,6 +115,7 @@ if(BUILD_TESTING)
         gmock
         gtest_main
         pthread
+        dl
     )
 
     target_code_coverage(testrunner EXCLUDE tests/*)
@@ -111,3 +133,4 @@ install(TARGETS ${INSTALL_TARGETS} EXPORT IoTeaSdkCpp
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
 )
+

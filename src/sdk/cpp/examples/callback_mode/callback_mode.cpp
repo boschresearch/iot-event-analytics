@@ -9,39 +9,53 @@
  ****************************************************************************/
 
 #include <csignal>
+#include <fstream>
+#include <iostream>
+#include <iterator>
 #include <iostream>
 #include "nlohmann/json.hpp"
 
 #include "client.hpp"
+#include "protocol_gateway.hpp"
 
 using json = nlohmann::json;
+using iotea::core::ProtocolGateway;
 using iotea::core::Service;
 using iotea::core::Client;
 using iotea::core::Callee;
-using iotea::core::event_ctx_ptr;
 using iotea::core::call_ctx_ptr;
+using iotea::core::error_message_ptr;
+using iotea::core::event_ptr;
+using iotea::core::event_ctx_ptr;
 using iotea::core::AndRules;
 using iotea::core::IsSet;
 using iotea::core::GreaterThan;
 using iotea::core::LessThan;
-using iotea::core::ErrorMessage;
-using iotea::core::Event;
 using iotea::core::schema::rule_ptr;
+using iotea::core::logging::NamedLogger;
 
-namespace logging = iotea::core::log;
-
-constexpr char SERVER_ADDRESS[] = "tcp://localhost:1883";
-
-static Client client = Client{SERVER_ADDRESS};
+std::shared_ptr<Client> client;
 
 void signal_handler(int) {
-    client.Stop();
+    if (client) {
+        client->Stop();
+    }
 }
 
-int main(int, char**) {
+static auto logger = NamedLogger("CallbackMode");
+
+int main(int, char** argv) {
+    logger.Error() << "Fired up";
+
+    std::ifstream file{argv[1]};
+    std::string config{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+
+    auto gateway = std::make_shared<ProtocolGateway>(json::parse(config));
+    client = std::make_shared<Client>(gateway);
+
     // Register a global error handler
-    client.OnError = [](const ErrorMessage& msg) {
-        logging::Error() << "Something went a awry, " << msg.GetMessage(); 
+    client->OnError = [](error_message_ptr msg) {
+        logger.Error() << "Something went a awry, " << msg->GetMessage();
     };
 
 
@@ -59,32 +73,32 @@ int main(int, char**) {
 
 
     // Register service with client
-    client.Register(service);
+    client->Register(service);
 
 
     // Create a stand-alone callee accessible to all
-    auto multiply = client.CreateCallee("my_service", "multiply");
+    auto multiply = client->CreateCallee("my_service", "multiply");
 
 
     // Create a stand-alone subscription and bind matching events to a function
-    client.Subscribe(IsSet("temp", "kuehlschrank"), [](const Event&, event_ctx_ptr) {
-        logging::Info() << "The temp is set!";
+    client->Subscribe(IsSet("anyfeature", "anytype"), [](event_ptr, event_ctx_ptr) {
+        logger.Info() << "anyfeature is set!";
     });
 
 
     // Create another stand-alone subscription and issue a function call upon receving an event
-    client.Subscribe(AndRules(GreaterThan("temp", 2, "kuehlschrank"), LessThan("temp", 10, "kuehlschrank")),
-            [multiply](const Event& e, event_ctx_ptr ctx) {
-        auto value = e.GetValue();
+    client->Subscribe(AndRules(GreaterThan("anyfeature", 2, "anytype"), LessThan("anyfeature", 10, "anytype")),
+            [multiply](event_ptr e, event_ctx_ptr ctx) {
+        auto value = e->GetValue();
 
         // Call the previously created callee.
         auto token = ctx->Call(multiply, json{value, value}, 1000);
 
         auto reply_handler = [](const std::vector<json>& reply) {
-            logging::Info() << "kuelschrank.temp=" << reply[0].get<int>(); 
+            logger.Info() << "anytype.anyfeature=" << reply[0].get<int>();
         };
         auto timeout_handler = []{
-            logging::Info() << "timed out waiting for result";
+            logger.Info() << "timed out waiting for result";
         };
 
         // Defer handling of the function reply until some later point in time.
@@ -92,7 +106,7 @@ int main(int, char**) {
     });
 
     std::signal(SIGINT, signal_handler);
-    client.Start();
+    client->Start();
 
     return 0;
 }

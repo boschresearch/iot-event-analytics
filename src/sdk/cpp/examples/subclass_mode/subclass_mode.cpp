@@ -9,12 +9,18 @@
  ****************************************************************************/
 
 #include <csignal>
+#include <fstream>
+#include <iostream>
+#include <iterator>
+#include <memory>
+
 #include "nlohmann/json.hpp"
 
 #include "client.hpp"
-#include "mqtt_client.hpp"
+#include "protocol_gateway.hpp"
 
 using json = nlohmann::json;
+using iotea::core::ProtocolGateway;
 using iotea::core::FunctionTalent;
 using iotea::core::Talent;
 using iotea::core::Client;
@@ -23,15 +29,11 @@ using iotea::core::AndRules;
 using iotea::core::IsSet;
 using iotea::core::GreaterThan;
 using iotea::core::LessThan;
-using iotea::core::ErrorMessage;
-using iotea::core::Event;
+using iotea::core::error_message_ptr;
+using iotea::core::event_ptr;
 using iotea::core::event_ctx_ptr;
 using iotea::core::call_ctx_ptr;
 using iotea::core::schema::rule_ptr;
-
-namespace logging = iotea::core::log;
-
-constexpr char SERVER_ADDRESS[] = "tcp://localhost:1883";
 
 class MyService : public FunctionTalent {
    public:
@@ -44,8 +46,8 @@ class MyService : public FunctionTalent {
         });
     }
 
-    void OnError(const ErrorMessage& msg) override {
-        logging::Error() << "Something went a awry, " << msg.GetMessage(); 
+    void OnError(error_message_ptr msg) override {
+        GetLogger().Error() << "Something went a awry, " << msg->GetMessage();
     };
 };
 
@@ -53,16 +55,16 @@ class MyReporingTalent : public Talent {
     public:
      MyReporingTalent() : Talent("my_reporting_talent") { }
 
-     void OnEvent(const Event&, event_ctx_ptr) override {
-        logging::Info() << "The temp is set!";
+     void OnEvent(event_ptr, event_ctx_ptr) override {
+        GetLogger().Info() << "The temp is set!";
      }
 
      rule_ptr OnGetRules() const override {
         return IsSet("temp", "kuehlschrank");
      }
 
-    void OnError(const ErrorMessage& msg) override {
-        logging::Error() << "Something went a awry, " << msg.GetMessage(); 
+    void OnError(error_message_ptr msg) override {
+        GetLogger().Error() << "Something went a awry, " << msg->GetMessage();
     };
 };
 
@@ -75,17 +77,17 @@ class MyCallingTalent : public Talent {
         multiply = RegisterCallee("my_service", "multiply");
      }
 
-     void OnEvent(const Event& e, event_ctx_ptr ctx) override {
-        logging::Info() << "EventReceived in MyCallingTalent";
-        auto value = e.GetValue();
+     void OnEvent(event_ptr e, event_ctx_ptr ctx) override {
+        GetLogger().Info() << "EventReceived in MyCallingTalent";
+        auto value = e->GetValue();
 
         auto token = ctx->Call(multiply, json{value, value}, 1000);
 
-        auto reply_handler = [](const std::vector<json>& reply) {
-            logging::Info() << "kuelschrank.temp=" << reply[0].get<int>(); 
+        auto reply_handler = [this](const std::vector<json>& reply) {
+            GetLogger().Info() << "kuelschrank.temp=" << reply[0].get<int>(); 
         };
-        auto timeout_handler = []{
-            logging::Info() << "timed out waiting for result";
+        auto timeout_handler = [this]{
+            GetLogger().Info() << "timed out waiting for result";
         };
 
         ctx->Gather(reply_handler, timeout_handler, token);
@@ -95,24 +97,32 @@ class MyCallingTalent : public Talent {
         return AndRules(GreaterThan("temp", 2, "kuehlschrank"), LessThan("temp", 10, "kuehlschrank"));
      }
 
-    void OnError(const ErrorMessage& msg) override {
-        logging::Error() << "Something went a awry, " << msg.GetMessage(); 
+    void OnError(error_message_ptr msg) override {
+        GetLogger().Error() << "Something went a awry, " << msg->GetMessage();
     };
 };
 
-static Client client = Client{SERVER_ADDRESS};
+std::shared_ptr<Client> client;
 
 void signal_handler(int) {
-    client.Stop();
+    if (client) {
+        client->Stop();
+    }
 }
 
-int main(int, char**) {
-    client.RegisterFunctionTalent(std::make_shared<MyService>());
-    client.RegisterTalent(std::make_shared<MyReporingTalent>());
-    client.RegisterTalent(std::make_shared<MyCallingTalent>());
+int main(int, char** argv) {
+    std::ifstream file{argv[1]};
+    std::string config{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+
+    auto gateway = std::make_shared<ProtocolGateway>(json::parse(config));
+    client = std::make_shared<Client>(gateway);
+
+    client->RegisterFunctionTalent(std::make_shared<MyService>());
+    client->RegisterTalent(std::make_shared<MyReporingTalent>());
+    client->RegisterTalent(std::make_shared<MyCallingTalent>());
 
     std::signal(SIGINT, signal_handler);
-    client.Start();
+    client->Start();
 
     return 0;
 }

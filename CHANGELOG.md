@@ -12,13 +12,16 @@
 
 ## [Unreleased]
 
+- 0.5.0, js-sdk-0.5.0, py-sdk-0.5.0
+  - js-sdk, py-sdk: Add support for Protocol Gateway feature
+
 - 0.4.1, js-sdk-0.4.1, py-sdk-0.4.1, vscode-sdk-0.9.4 [2021-05-05]
   - Function call timeouts are now correctly transported to succeeding function calls (other function calls, or recursive calls)
   - Fix range-selection in jsonQuery module to mimic the behavior of Python range selectors
   - py-sdk: Handle high event loads (e.g. recursive function calls) to prevent timeouts by configuring the ThreadPoolExecutor
   - js-sdk: Fix wrong export of platform event topics
   - js-sdk: Strip MQTT namespace from topics within the MQTT protocol adapter
-  - js-sdk: Include sdk builds in package json script `yarn build.sdk`
+  - js-sdk: Include sdk builds in package json script `yarn sdk.build`
   - vscode-sdk: Make refresh time interval for type features configurable
 
 - 0.4.0, js-sdk-0.4.0, py-sdk-0.4.0, vscode-sdk-0.9.3 [2021-03-30]
