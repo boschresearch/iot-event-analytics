@@ -453,24 +453,4 @@ class VssPathTranslator {
 module.exports = {
     KuksaValAdapter,
     VssPathTranslator
-<<<<<<< HEAD:src/adapter/vss/vss.adapter.js
 };
-
-// const legacyVssPathConfig = VSS_PATH_CONFIG;
-// const newVssPathConfig = {
-//     separator: '/',
-//     replacer: {
-//         '/': '$',
-//         '.': '_'
-//     }
-// };
-
-// const tLegacy = new VssPathTranslator(legacyVssPathConfig);
-// const tNew = new VssPathTranslator(newVssPathConfig);
-// console.log(tLegacy.ioteaTypeAndFeature2KuksaVssPath('Vehicle', 'ADAS$ObstacleDetection$IsActive'));
-// console.log(tLegacy.kuksaVss2IoteaTypeAndFeature('Vehicle.ADAS.ObstacleDetection.IsActive'));
-// console.log(tNew.ioteaTypeAndFeature2KuksaVssPath('Vehicle', 'ADAS$ObstacleDetection_Foo$IsActive'));
-// console.log(tNew.kuksaVss2IoteaTypeAndFeature('Vehicle/ADAS/ObstacleDetection.Foo/IsActive'));
-=======
-};
->>>>>>> origin/develop:src/adapter/kuksa.val/kuksa.val.adapter.js

@@ -52,7 +52,7 @@ class VssWorker extends Talent {
 
     getRules() {
         return new OrRules([
-            new Rule(new OpConstraint('Acceleration$Lateral', OpConstraint.OPS.ISSET, null, 'Vehicle', VALUE_TYPE_RAW)),
+            new Rule(new OpConstraint('Acceleration$Longitudinal', OpConstraint.OPS.ISSET, null, 'Vehicle', VALUE_TYPE_RAW)),
             new Rule(new OpConstraint('Speed', OpConstraint.OPS.ISSET, null, 'Vehicle', VALUE_TYPE_RAW))
         ]);
     }
@@ -78,14 +78,14 @@ const kuksaValWs = new KuksaValWebsocket(config.get("'kuksa.val'.ws"), config.ge
 
 let accLon = 0;
 
-async function publishAccLonToVssIndefinitly() {
+async function publishAccLonToKuksaValIndefinitly() {
 
     demoLogger.info(`Publishing ${accLon} to Vehicle.Acceleration.Vertical...`);
 
-    await vssws.publish('Vehicle.Acceleration.Vertical', accLon++);
+    await kuksaValWs.publish('Vehicle.Acceleration.Vertical', accLon++);
 
     demoLogger.info(`Publishing ${accLon} to Vehicle.Acceleration.Lateral...`);
-    await vssws.publish('Vehicle.Acceleration.Lateral', accLon++);
+    await kuksaValWs.publish('Vehicle.Acceleration.Lateral', accLon++);
 
     setTimeout(() => {
         publishAccLonToKuksaValIndefinitly();
