@@ -279,7 +279,7 @@ class KuksaValAdapter extends Talent {
             const uniqueVssPaths = this.__extractUniqueVssPathsFromRules(talentConfig.rules);
 
             if (uniqueVssPaths.length === 0) {
-                this.logger.info(`No VSS Paths found for rules ...`, talentConfig.rules);
+                this.logger.info('No VSS Paths found for rules', talentConfig.rules);
                 return;
             }
 
@@ -320,8 +320,6 @@ class KuksaValAdapter extends Talent {
 
             return Array.from(new Set(vssPaths));
         }
-
-        this.logger.debug(`Extract rule ${rulesJson.feature}...`);
 
         // eslint-disable-next-line no-useless-escape
         const typeSelectionRegex = /^(?:([0-9]+|\*)\.)?([^\.]+)$/g;

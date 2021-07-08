@@ -96,7 +96,7 @@ const mqttAdapterConfig = MqttProtocolAdapter.createDefaultConfiguration();
 const talentGatewayConfig = ProtocolGateway.createDefaultConfiguration([ mqttAdapterConfig ]);
 
 new VssWorker(talentGatewayConfig).start()
-    //.then(() => vssws.subscribe('Vehicle.Acceleration.Lateral', msg => {
+    //.then(() => kuksaValWs.subscribe('Vehicle.Acceleration.Lateral', msg => {
     //    demoLogger.info(`Received ${msg.value} from ${msg.path}`);
     //}))
     .then(() => {

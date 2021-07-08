@@ -1,7 +1,5 @@
 {
-    "loglevel": "DEBUG",
-    "platformId": "123456",
-    "talentDiscoveryIntervalMs": 30000,
+    "loglevel": "INFO",
     "protocolGateway": {
         "adapters": [
             {
@@ -29,8 +27,7 @@
     },
     "segment": "280101",
     "paths": {
-        "userId": "Vehicle.Driver.Identifier.Subject",
-        "instanceId": "Vehicle.VehicleIdentification.VIN",
-        "speed": "Vehicle.Speed"
+        "userId": "Vehicle.Driver.Indentifier.Subject",
+        "instanceId": "Vehicle.VehicleIdentification.VIN"
     }
 }
