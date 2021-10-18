@@ -28,6 +28,14 @@
                             "encoder": null
                         }
                     },
+                    "OBD$EngineLoad": {
+                        "idx": 5,
+                        "description": "Engine Load on the OBD.",
+                        "encoding": {
+                            "type": "string",
+                            "encoder": null
+                        }
+                    },
                     "ODB$Speed": {
                         "idx": 3,
                         "description": "Vehicle speed.",

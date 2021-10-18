@@ -13,3 +13,4 @@ docs/jsdoc/*
 *.swo
 venv/*
 .venv
+yarn.lock

@@ -25,7 +25,16 @@ from iotea.core.rules import AndRules, Rule, ChangeConstraint, Constraint
 
 class MyTalent(Talent):
     def __init__(self, protocol_gateway_config):
-        super().__init__('python-basic-talent', protocol_gateway_config)
+        super().__init__('grad-speed-talent', protocol_gateway_config)
+        self.prevEv = None
+        self.currGrad = 0
+
+    def callees(self):
+        return [
+            f'risk-index.speedgrad_change',
+            f'risk-index.enginegrad_change'
+        ]
+
 
     def get_rules(self):
         return AndRules([
@@ -34,10 +43,20 @@ class MyTalent(Talent):
 
     async def on_event(self, ev, evtctx):
         print(f'Raw value {TalentInput.get_raw_value(ev)}')
+        if self.prevEv == None:
+            self.prevEv = ev
+        else:
+            deltaV = float(TalentInput.get_raw_value(ev)) - float(TalentInput.get_raw_value(self.prevEv))
+            deltaT = float(ev["whenMs"]) - float(self.prevEv["whenMs"])
+            self.currGrad = deltaV/deltaT
+            self.prevEv = ev
+
+            result = await self.call("risk-index", "enginegrad_change", [str(self.currGrad)], ev["subject"], ev["returnTopic"], 6000)
+            print("Result is {}".format(result))
 
 
 async def main():
-    mqtt_config = MqttProtocolAdapter.create_default_configuration()
+    mqtt_config = MqttProtocolAdapter.create_default_configuration(broker_url="mqtt://mosquitto:1883")
     pg_config = ProtocolGateway.create_default_configuration([mqtt_config])
     my_talent = MyTalent(pg_config)
     await my_talent.start()
